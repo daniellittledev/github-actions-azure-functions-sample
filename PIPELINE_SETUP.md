@@ -60,7 +60,7 @@ The pipeline consists of:
 
 You'll need separate app registrations for test and production environments with OIDC federated credentials.
 
-```bash
+```pwsh
 # Create app registration for test environment
 az ad app create --display-name "github-actions-test"
 
@@ -72,10 +72,10 @@ az ad app create --display-name "github-actions-prod"
 
 For each app registration, configure federated credentials for GitHub Actions:
 
-```bash
+```pwsh
 # For test environment (adjust values accordingly)
-az ad app federated-credential create \
-  --id <TEST_APP_ID> \
+az ad app federated-credential create `
+  --id <TEST_APP_ID> `
   --parameters '{
     "name": "github-actions-test",
     "issuer": "https://token.actions.githubusercontent.com",
@@ -84,8 +84,8 @@ az ad app federated-credential create \
   }'
 
 # For production environment
-az ad app federated-credential create \
-  --id <PROD_APP_ID> \
+az ad app federated-credential create `
+  --id <PROD_APP_ID> `
   --parameters '{
     "name": "github-actions-prod",
     "issuer": "https://token.actions.githubusercontent.com",
@@ -98,21 +98,21 @@ az ad app federated-credential create \
 
 Grant the service principals appropriate permissions:
 
-```bash
+```pwsh
 # Get service principal IDs
-TEST_SP_ID=$(az ad sp list --filter "appId eq '<TEST_APP_ID>'" --query '[0].id' -o tsv)
-PROD_SP_ID=$(az ad sp list --filter "appId eq '<PROD_APP_ID>'" --query '[0].id' -o tsv)
+$TestSpId = az ad sp list --filter "appId eq '<TEST_APP_ID>'" --query '[0].id' -o tsv
+$ProdSpId = az ad sp list --filter "appId eq '<PROD_APP_ID>'" --query '[0].id' -o tsv
 
 # Assign Contributor role to test resource group
-az role assignment create \
-  --assignee $TEST_SP_ID \
-  --role "Contributor" \
+az role assignment create `
+  --assignee $TestSpId `
+  --role "Contributor" `
   --scope "/subscriptions/<TEST_SUBSCRIPTION_ID>/resourceGroups/<TEST_RESOURCE_GROUP>"
 
 # Assign Contributor role to production resource group
-az role assignment create \
-  --assignee $PROD_SP_ID \
-  --role "Contributor" \
+az role assignment create `
+  --assignee $ProdSpId `
+  --role "Contributor" `
   --scope "/subscriptions/<PROD_SUBSCRIPTION_ID>/resourceGroups/<PROD_RESOURCE_GROUP>"
 ```
 
