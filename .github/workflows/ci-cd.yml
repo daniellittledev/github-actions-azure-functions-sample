@@ -1,0 +1,150 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: "8.0.x"
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: "AzureFunction"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.semver.outputs.version }}
+      infra-changed: ${{ steps.changes.outputs.infra }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            infra:
+              - 'infra/**'
+            app:
+              - 'AzureFunction/**'
+              - 'AzureFunction.Tests/**'
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Node.js (for semantic versioning)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install semantic-release
+        shell: pwsh
+        run: |
+          npm install -g semantic-release @semantic-release/changelog @semantic-release/git
+
+      - name: Generate version
+        id: semver
+        shell: pwsh
+        run: |
+          # For demonstration, using a simple timestamp-based version
+          # In production, you'd use semantic-release or similar
+          $version = "1.0.$(Get-Date -Format 'yyyyMMddHHmmss')"
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Generated version: $version"
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore dependencies
+        shell: pwsh
+        run: dotnet restore
+
+      - name: Setup Azure CLI
+        uses: azure/setup-cli@v2
+
+      - name: Lint Bicep files
+        if: steps.changes.outputs.infra == 'true'
+        shell: pwsh
+        run: |
+          az bicep lint --file infra/main.bicep
+
+      - name: Build solution
+        shell: pwsh
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Run tests
+        shell: pwsh
+        run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
+
+      - name: Publish Function App
+        shell: pwsh
+        run: |
+          dotnet publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }} `
+            --configuration Release `
+            --output ./publish `
+            --no-build
+
+      - name: Create deployment package
+        shell: pwsh
+        run: |
+          Set-Location publish
+          Compress-Archive -Path * -DestinationPath ../function-app.zip
+          Set-Location ..
+
+      - name: Upload Function App artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: function-app-${{ steps.semver.outputs.version }}
+          path: function-app.zip
+          retention-days: 30
+
+      - name: Upload Bicep artifact
+        if: steps.changes.outputs.infra == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bicep-templates-${{ steps.semver.outputs.version }}
+          path: infra/
+          retention-days: 30
+
+  deploy-test:
+    needs: build
+    if: github.ref == 'refs/heads/develop' || github.event_name == 'pull_request'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: test
+      version: ${{ needs.build.outputs.version }}
+      infra-changed: ${{ needs.build.outputs.infra-changed }}
+    secrets:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_TEST }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID_TEST }}
+      AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP_TEST }}
+      AZURE_FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME_TEST }}
+
+  deploy-prod:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: prod
+      version: ${{ needs.build.outputs.version }}
+      infra-changed: ${{ needs.build.outputs.infra-changed }}
+    secrets:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_PROD }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID_PROD }}
+      AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP_PROD }}
+      AZURE_FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME_PROD }}

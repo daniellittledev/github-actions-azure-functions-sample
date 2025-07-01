@@ -1,0 +1,210 @@
+name: Deploy Azure Function
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+        description: "Environment to deploy to (test/prod)"
+      version:
+        required: true
+        type: string
+        description: "Version number for deployment"
+      infra-changed:
+        required: true
+        type: string
+        description: "Whether infrastructure files have changed"
+    secrets:
+      AZURE_CLIENT_ID:
+        required: true
+      AZURE_TENANT_ID:
+        required: true
+      AZURE_SUBSCRIPTION_ID:
+        required: true
+      AZURE_RESOURCE_GROUP:
+        required: true
+      AZURE_FUNCTIONAPP_NAME:
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: windows-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Function App artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: function-app-${{ inputs.version }}
+          path: ./artifacts
+
+      - name: Download Bicep artifact
+        if: inputs.infra-changed == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: bicep-templates-${{ inputs.version }}
+          path: ./bicep-artifacts
+
+      - name: Azure Login using OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Bicep Infrastructure
+        if: inputs.infra-changed == 'true'
+        shell: pwsh
+        run: |
+          # Use pipeline-specific Bicep template if it exists, otherwise use main.bicep
+          $bicepFile = "./bicep-artifacts/main-pipeline.bicep"
+          if (-not (Test-Path $bicepFile)) {
+            $bicepFile = "./bicep-artifacts/main.bicep"
+          }
+
+          az deployment group create `
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
+            --template-file $bicepFile `
+            --parameters functionAppName=${{ secrets.AZURE_FUNCTIONAPP_NAME }} `
+            --mode Incremental
+
+      - name: Create staging slot
+        shell: pwsh
+        run: |
+          # Check if staging slot exists, create if not
+          $slots = az functionapp deployment slot list `
+            --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} `
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
+            --query "[?name=='staging']" `
+            --output tsv
+
+          if (-not $slots) {
+            Write-Host "Creating staging slot..."
+            az functionapp deployment slot create `
+              --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} `
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
+              --slot staging
+          } else {
+            Write-Host "Staging slot already exists"
+          }
+
+      - name: Deploy to staging slot
+        shell: pwsh
+        run: |
+          az functionapp deployment source config-zip `
+            --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} `
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
+            --slot staging `
+            --src ./artifacts/function-app.zip
+
+      - name: Configure app settings for staging slot
+        shell: pwsh
+        run: |
+          # Set environment-specific app settings
+          $environment = "${{ inputs.environment }}"
+          $dotnetEnv = if ($environment -eq "prod") { "Production" } else { "Development" }
+          $deployedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+          az functionapp config appsettings set `
+            --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} `
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
+            --slot staging `
+            --settings `
+              "DOTNET_ENVIRONMENT=$dotnetEnv" `
+              "SAMPLE_SETTING=$environment-sample" `
+              "DEPLOYMENT_VERSION=${{ inputs.version }}" `
+              "DEPLOYED_AT=$deployedAt"
+
+      - name: Wait for staging slot warmup
+        shell: pwsh
+        run: |
+          Write-Host "Waiting for staging slot to warm up..."
+          Start-Sleep -Seconds 30
+
+          # Health check on staging slot
+          $stagingUrl = "https://${{ secrets.AZURE_FUNCTIONAPP_NAME }}-staging.azurewebsites.net"
+
+          # Try to hit the health endpoint (assuming you have one)
+          for ($i = 1; $i -le 10; $i++) {
+            try {
+              $response = Invoke-WebRequest -Uri "$stagingUrl/api/health" -TimeoutSec 10 -ErrorAction Stop
+              if ($response.StatusCode -eq 200) {
+                Write-Host "Staging slot is healthy"
+                break
+              }
+            } catch {
+              Write-Host "Attempt $i`: Staging slot not ready yet, waiting..."
+              Start-Sleep -Seconds 10
+            }
+          }
+
+      - name: Run smoke tests on staging
+        shell: pwsh
+        run: |
+          # Add your smoke tests here
+          Write-Host "Running smoke tests on staging slot..."
+          $stagingUrl = "https://${{ secrets.AZURE_FUNCTIONAPP_NAME }}-staging.azurewebsites.net"
+
+          # Example smoke test
+          try {
+            $response = Invoke-WebRequest -Uri "$stagingUrl/api/health" -TimeoutSec 30 -ErrorAction Stop
+            if ($response.Content -match "Healthy") {
+              Write-Host "✅ Smoke test passed: Health endpoint is working"
+            } else {
+              Write-Host "❌ Smoke test failed: Health endpoint response unexpected"
+              exit 1
+            }
+          } catch {
+            Write-Host "❌ Smoke test failed: Health endpoint is not working"
+            Write-Host "Error: $($_.Exception.Message)"
+            exit 1
+          }
+
+      - name: Swap staging to production
+        shell: pwsh
+        run: |
+          Write-Host "Swapping staging slot to production..."
+          az functionapp deployment slot swap `
+            --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} `
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
+            --slot staging `
+            --target-slot production
+
+      - name: Verify production deployment
+        shell: pwsh
+        run: |
+          Write-Host "Verifying production deployment..."
+          $prodUrl = "https://${{ secrets.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net"
+
+          # Wait a bit for the swap to complete
+          Start-Sleep -Seconds 15
+
+          # Verify production is working
+          for ($i = 1; $i -le 5; $i++) {
+            try {
+              $response = Invoke-WebRequest -Uri "$prodUrl/api/health" -TimeoutSec 10 -ErrorAction Stop
+              if ($response.StatusCode -eq 200) {
+                Write-Host "✅ Production verification successful"
+                break
+              }
+            } catch {
+              Write-Host "Attempt $i`: Production not ready yet, waiting..."
+              Start-Sleep -Seconds 10
+            }
+          }
+
+      - name: Clean up on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          Write-Host "Deployment failed, cleaning up..."
+          # If deployment failed, you might want to swap back or take other corrective actions
+          # This is optional and depends on your rollback strategy
