@@ -93,3 +93,4 @@ output functionAppName string = functionApp.name
 output resourceGroupName string = resourceGroup().name
 output storageAccountName string = storage.name
 output hostingPlanName string = hostingPlan.name
+output webJobsStorageConnection string = webJobsStorageConnection

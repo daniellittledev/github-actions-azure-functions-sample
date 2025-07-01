@@ -62,19 +62,54 @@ jobs:
 
       - name: Deploy Bicep Infrastructure
         if: inputs.infra-changed == 'true'
+        id: bicep-deploy
         shell: pwsh
         run: |
-          # Use pipeline-specific Bicep template if it exists, otherwise use main.bicep
-          $bicepFile = "./bicep-artifacts/main-pipeline.bicep"
-          if (-not (Test-Path $bicepFile)) {
-            $bicepFile = "./bicep-artifacts/main.bicep"
+          Write-Host "Deploying Bicep template: main.bicep"
+          $deploymentOutput = az deployment group create `
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
+            --template-file ./bicep-artifacts/main.bicep `
+            --parameters functionAppName=${{ secrets.AZURE_FUNCTIONAPP_NAME }} `
+            --mode Incremental `
+            --query "properties.outputs" `
+            --output json | ConvertFrom-Json
+
+          # Extract outputs and set as step outputs
+          if ($deploymentOutput.webJobsStorageConnection) {
+            $storageConnection = $deploymentOutput.webJobsStorageConnection.value
+            echo "STORAGE_CONNECTION=$storageConnection" >> $env:GITHUB_OUTPUT
+            Write-Host "✅ Storage connection string retrieved from Bicep deployment"
+          } else {
+            Write-Host "⚠️ No storage connection string in Bicep outputs"
           }
 
-          az deployment group create `
+      - name: Get Storage Connection String (if Bicep didn't run)
+        if: inputs.infra-changed != 'true'
+        id: get-storage
+        shell: pwsh
+        run: |
+          Write-Host "Infrastructure didn't change, retrieving existing storage connection string..."
+
+          # Get the storage account name from function app name
+          $functionAppName = "${{ secrets.AZURE_FUNCTIONAPP_NAME }}"
+          $storageAccountName = $functionAppName -replace '-','' + "fsa"
+
+          # Get storage account key
+          $storageKey = az storage account keys list `
+            --account-name $storageAccountName `
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
-            --template-file $bicepFile `
-            --parameters functionAppName=${{ secrets.AZURE_FUNCTIONAPP_NAME }} `
-            --mode Incremental
+            --query "[0].value" `
+            --output tsv
+
+          if ($storageKey) {
+            # Construct the connection string
+            $storageConnection = "DefaultEndpointsProtocol=https;AccountName=$storageAccountName;AccountKey=$storageKey;EndpointSuffix=core.windows.net"
+            echo "STORAGE_CONNECTION=$storageConnection" >> $env:GITHUB_OUTPUT
+            Write-Host "✅ Storage connection string retrieved from existing storage account"
+          } else {
+            Write-Host "❌ Failed to retrieve storage account key"
+            exit 1
+          }
 
       - name: Create staging slot
         shell: pwsh
@@ -113,11 +148,28 @@ jobs:
           $dotnetEnv = if ($environment -eq "prod") { "Production" } else { "Development" }
           $deployedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
+          # Get storage connection string from previous steps
+          $storageConnection = ""
+          if ("${{ steps.bicep-deploy.outputs.STORAGE_CONNECTION }}" -ne "") {
+            $storageConnection = "${{ steps.bicep-deploy.outputs.STORAGE_CONNECTION }}"
+          } elseif ("${{ steps.get-storage.outputs.STORAGE_CONNECTION }}" -ne "") {
+            $storageConnection = "${{ steps.get-storage.outputs.STORAGE_CONNECTION }}"
+          } else {
+            Write-Host "❌ No storage connection string available"
+            exit 1
+          }
+
+          Write-Host "Configuring app settings for staging slot..."
           az functionapp config appsettings set `
             --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} `
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
             --slot staging `
             --settings `
+              "FUNCTIONS_EXTENSION_VERSION=~4" `
+              "FUNCTIONS_WORKER_RUNTIME=dotnet-isolated" `
+              "WEBSITE_RUN_FROM_PACKAGE=1" `
+              "AzureWebJobsStorage=$storageConnection" `
+              "AZURE_SUBSCRIPTION_ID=${{ secrets.AZURE_SUBSCRIPTION_ID }}" `
               "DOTNET_ENVIRONMENT=$dotnetEnv" `
               "SAMPLE_SETTING=$environment-sample" `
               "DEPLOYMENT_VERSION=${{ inputs.version }}" `
