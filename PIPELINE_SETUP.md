@@ -1,64 +1,14 @@
 # GitHub Actions CI/CD Pipeline Setup Guide
 
-This document provides a comprehensive plan for setting up a GitHub Actions CI/CD pipeline for the Azure Function project using PowerShell.
+This document provides a setup guide for the GitHub Actions CI/CD pipeline implementing a three-step workflow: **Build**, **Deploy-Test**, and **Deploy-Prod** with shared deployment logic.
 
-## Overview
+## 🚀 First Time Setup
 
-The pipeline consists of:
+### 1. Azure Prerequisites
 
-1. **Build Job**: Builds, tests, and packages the application (runs on Windows with PowerShell)
-2. **Deploy-Test Job**: Deploys to test environment (runs on Windows with PowerShell)
-3. **Deploy-Prod Job**: Deploys to production environment (runs on Windows with PowerShell)
+#### Create Azure AD App Registrations
 
-## Workflow Structure
-
-### Main Workflow (`ci-cd.yml`)
-
-- Triggers on pushes to `main`/`develop` branches and pull requests
-- Runs on `windows-latest` runners
-- Uses PowerShell (`pwsh`) for all script steps
-- Includes build job with:
-  - NuGet package caching
-  - Bicep linting
-  - Project build and test
-  - Semantic versioning
-  - Artifact publishing
-- Conditional deployment jobs based on branch and change detection
-
-### Reusable Deployment Workflow (`deploy.yml`)
-
-- Shared by both test and production deployments
-- Runs on `windows-latest` runners
-- Uses PowerShell (`pwsh`) for all script steps
-- Uses Azure OIDC for secure authentication
-- Implements blue-green deployment with staging slots
-- Separates infrastructure and application settings deployment
-
-## Required GitHub Secrets
-
-### For Test Environment
-
-- `AZURE_CLIENT_ID_TEST`: Azure AD App Registration Client ID for test
-- `AZURE_SUBSCRIPTION_ID_TEST`: Azure subscription ID for test environment
-- `AZURE_RESOURCE_GROUP_TEST`: Resource group name for test environment
-- `AZURE_FUNCTIONAPP_NAME_TEST`: Function app name for test environment
-
-### For Production Environment
-
-- `AZURE_CLIENT_ID_PROD`: Azure AD App Registration Client ID for production
-- `AZURE_SUBSCRIPTION_ID_PROD`: Azure subscription ID for production environment
-- `AZURE_RESOURCE_GROUP_PROD`: Resource group name for production environment
-- `AZURE_FUNCTIONAPP_NAME_PROD`: Function app name for production environment
-
-### Shared Secrets
-
-- `AZURE_TENANT_ID`: Azure AD tenant ID (shared across environments)
-
-## Azure Setup Requirements
-
-### 1. Create Azure AD App Registrations
-
-You'll need separate app registrations for test and production environments with OIDC federated credentials.
+Create separate app registrations for test and production environments:
 
 ```pwsh
 # Create app registration for test environment
@@ -68,12 +18,12 @@ az ad app create --display-name "github-actions-test"
 az ad app create --display-name "github-actions-prod"
 ```
 
-### 2. Configure Federated Credentials
+#### Configure Federated Credentials
 
-For each app registration, configure federated credentials for GitHub Actions:
+Set up OIDC federated credentials for GitHub Actions (replace placeholders with your values):
 
 ```pwsh
-# For test environment (adjust values accordingly)
+# For test environment
 az ad app federated-credential create `
   --id <TEST_APP_ID> `
   --parameters '{
@@ -94,9 +44,9 @@ az ad app federated-credential create `
   }'
 ```
 
-### 3. Assign Permissions
+#### Assign Azure Permissions
 
-Grant the service principals appropriate permissions:
+Grant the service principals Contributor access to their respective resource groups:
 
 ```pwsh
 # Get service principal IDs
@@ -116,101 +66,113 @@ az role assignment create `
   --scope "/subscriptions/<PROD_SUBSCRIPTION_ID>/resourceGroups/<PROD_RESOURCE_GROUP>"
 ```
 
-## Key Features
+### 2. GitHub Repository Configuration
 
-### Build Job Features
+#### Required GitHub Secrets
 
-- **Windows Runners**: Uses `windows-latest` for compatibility with PowerShell
-- **PowerShell Scripts**: All custom scripts use PowerShell (`pwsh`) shell
-- **NuGet Caching**: Speeds up builds by caching NuGet packages
-- **Change Detection**: Only runs Bicep linting when infrastructure files change
-- **Semantic Versioning**: Generates version numbers for deployments using PowerShell date formatting
-- **Parallel Testing**: Runs unit tests with code coverage
-- **Artifact Management**: Uses PowerShell `Compress-Archive` to create deployment packages
+Configure these secrets in your GitHub repository settings:
 
-### Deployment Features
+**Test Environment:**
 
-- **Windows Runners**: Uses `windows-latest` for consistency with build environment
-- **PowerShell Scripts**: All deployment scripts use PowerShell for better Windows integration
-- **Blue-Green Deployment**: Uses staging slots for zero-downtime deployments
-- **Infrastructure Separation**: Only deploys Bicep when infrastructure changes
-- **App Settings Management**: Deploys app settings via Azure CLI with PowerShell variable handling
-- **Health Checks**: Uses PowerShell `Invoke-WebRequest` for deployment verification
-- **Rollback Capability**: Includes cleanup steps for failed deployments
+- `AZURE_CLIENT_ID_TEST`: Azure AD App Registration Client ID for test
+- `AZURE_SUBSCRIPTION_ID_TEST`: Azure subscription ID for test environment
+- `AZURE_RESOURCE_GROUP_TEST`: Resource group name for test environment
+- `AZURE_FUNCTIONAPP_NAME_TEST`: Function app name for test environment
 
-### Security Features
+**Production Environment:**
 
-- **OIDC Authentication**: Uses OpenID Connect for secure Azure authentication (no stored credentials)
-- **Least Privilege**: Service principals have minimal required permissions
-- **Environment Isolation**: Separate credentials and resources for test/prod
+- `AZURE_CLIENT_ID_PROD`: Azure AD App Registration Client ID for production
+- `AZURE_SUBSCRIPTION_ID_PROD`: Azure subscription ID for production environment
+- `AZURE_RESOURCE_GROUP_PROD`: Resource group name for production environment
+- `AZURE_FUNCTIONAPP_NAME_PROD`: Function app name for production environment
 
-## Environment-Specific Configuration
+**Shared:**
 
-### Test Environment
+- `AZURE_TENANT_ID`: Azure AD tenant ID (shared across environments)
 
-- Triggered by pushes to `develop` branch or pull requests
-- Uses test-specific Azure resources and credentials
-- App settings configured for development/testing
+### 3. Required Files
 
-### Production Environment
-
-- Triggered only by pushes to `main` branch
-- Uses production Azure resources and credentials
-- App settings configured for production use
-
-## Deployment Process
-
-1. **Build Stage**:
-
-   - Restore NuGet packages (with caching)
-   - Lint Bicep files (if infrastructure changed)
-   - Build solution
-   - Run unit tests
-   - Publish function app
-   - Create deployment artifacts
-
-2. **Infrastructure Deployment** (if changed):
-
-   - Deploy Bicep templates using Azure CLI
-   - Create/update Azure resources
-
-3. **Application Deployment**:
-   - Create staging slot (if not exists)
-   - Deploy function app to staging slot
-   - Configure environment-specific app settings
-   - Run smoke tests on staging
-   - Swap staging to production
-   - Verify production deployment
-
-## Files Created
+Ensure these workflow files exist in your repository:
 
 1. **`.github/workflows/ci-cd.yml`**: Main CI/CD pipeline
 2. **`.github/workflows/deploy.yml`**: Reusable deployment workflow
-3. **`infra/main-pipeline.bicep`**: Modified Bicep template for pipeline use
-4. **`PIPELINE_SETUP.md`**: This setup guide
+3. **`infra/main.bicep`**: Infrastructure template
 
-## Next Steps
+## 📖 Usage
 
-1. Set up Azure AD app registrations and federated credentials
-2. Configure GitHub repository secrets
-3. Create test and production resource groups in Azure
-4. Test the pipeline with a small change
-5. Configure branch protection rules as needed
-6. Set up monitoring and alerting for deployments
+### Triggering Deployments
 
-## Customization Options
+#### Automatic Triggers
 
-- **Semantic Versioning**: Replace the simple timestamp version with proper semantic-release
-- **Testing Strategy**: Add integration tests, load tests, or security scans
-- **Notification**: Add Slack/Teams notifications for deployment status
-- **Approval Gates**: Add manual approval steps for production deployments
-- **Multi-region**: Extend for multi-region deployments
-- **Monitoring**: Integrate with Application Insights or other monitoring tools
+- **Test Environment**: Push to `develop` branch or create pull requests to `main`
+- **Production Environment**: Push to `main` branch only
 
-## Troubleshooting
+#### Manual Deployment
 
-- Check Azure CLI version compatibility
-- Verify OIDC federated credential configuration
-- Ensure service principal permissions are correct
-- Check that staging slot creation permissions are granted
-- Verify function app naming constraints are met
+Use the GitHub Actions UI to manually trigger deployments via workflow dispatch.
+
+### Branch Strategy
+
+- **`develop`** → Deploys to **Test Environment**
+- **`main`** → Deploys to **Production Environment**
+- **Pull Requests to `main`** → Deploys to **Test Environment** for validation
+
+### Deployment Process
+
+1. **Build Stage**: Compiles code, runs tests, creates artifacts
+2. **Test Deployment**: Automatically deploys to test environment
+3. **Production Deployment**: Deploys to production (main branch only)
+
+### Monitoring Deployments
+
+- Check the **Actions** tab in GitHub for deployment status
+- Review staging slot health before production promotion
+- Monitor Azure Function logs for any issues
+
+## Architecture
+
+### Pipeline Overview
+
+The CI/CD pipeline consists of three main components:
+
+1. **Build Job** (`ci-cd.yml`): Code compilation, testing, and artifact creation
+2. **Deploy-Test Job** (calls `deploy.yml`): Test environment deployment
+3. **Deploy-Prod Job** (calls `deploy.yml`): Production environment deployment
+
+### Build Job Features
+
+- **NuGet Package Caching**: Caches packages for faster builds
+- **Infrastructure Change Detection**: Only processes infrastructure when files change
+- **Bicep Linting**: Validates infrastructure templates
+- **Build & Test**: Compiles code and runs unit tests with coverage
+- **Artifact Creation**: Packages function app and infrastructure templates
+- **Semantic Versioning**: Generates timestamp-based versions
+
+### Deployment Workflow Features
+
+- **Azure OIDC Authentication**: Secure, passwordless authentication
+- **Blue-Green Deployment**: Zero-downtime deployments using staging slots
+- **Conditional Infrastructure**: Only deploys infrastructure when changed
+- **Storage Connection Management**: Automatically handles storage connections
+- **Health Validation**: Checks deployment health before promoting to production
+
+### Key Technical Decisions
+
+#### Smart Infrastructure Deployment
+
+- **Bicep templates** only deploy when `infra/**` files change
+- **App settings** managed separately from infrastructure for flexibility
+- **Storage connections** extracted from Bicep outputs or queried from existing resources
+
+#### Staging Slot Strategy
+
+1. Deploy to staging slot first
+2. Run health checks on staging
+3. Swap to production only after validation
+4. Quick rollback capability through slot swap
+
+#### Security Model
+
+- **OIDC Authentication**: No stored credentials, uses federated identity
+- **Environment Isolation**: Separate service principals for test/production
+- **Least Privilege**: Minimal required permissions for each environment

@@ -79,7 +79,7 @@ jobs:
         if: steps.changes.outputs.infra == 'true'
         shell: pwsh
         run: |
-          az bicep lint --file infra/main-infra.bicep
+          az bicep lint --file infra/main.bicep
 
       - name: Build solution
         shell: pwsh

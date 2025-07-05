@@ -62,33 +62,22 @@ jobs:
 
       - name: Deploy Bicep Infrastructure
         if: inputs.infra-changed == 'true'
-        id: bicep-deploy
         shell: pwsh
         run: |
           Write-Host "Deploying Bicep template: main.bicep"
-          $deploymentOutput = az deployment group create `
+          az deployment group create `
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
             --template-file ./bicep-artifacts/main.bicep `
             --parameters functionAppName=${{ secrets.AZURE_FUNCTIONAPP_NAME }} `
-            --mode Incremental `
-            --query "properties.outputs" `
-            --output json | ConvertFrom-Json
+            --mode Incremental
 
-          # Extract outputs and set as step outputs
-          if ($deploymentOutput.webJobsStorageConnection) {
-            $storageConnection = $deploymentOutput.webJobsStorageConnection.value
-            echo "STORAGE_CONNECTION=$storageConnection" >> $env:GITHUB_OUTPUT
-            Write-Host "✅ Storage connection string retrieved from Bicep deployment"
-          } else {
-            Write-Host "⚠️ No storage connection string in Bicep outputs"
-          }
+          Write-Host "Bicep infrastructure deployment completed"
 
-      - name: Get Storage Connection String (if Bicep didn't run)
-        if: inputs.infra-changed != 'true'
+      - name: Get Storage Connection String
         id: get-storage
         shell: pwsh
         run: |
-          Write-Host "Infrastructure didn't change, retrieving existing storage connection string..."
+          Write-Host "Retrieving storage connection string from existing storage account..."
 
           # Get the storage account name from function app name
           $functionAppName = "${{ secrets.AZURE_FUNCTIONAPP_NAME }}"
@@ -105,9 +94,9 @@ jobs:
             # Construct the connection string
             $storageConnection = "DefaultEndpointsProtocol=https;AccountName=$storageAccountName;AccountKey=$storageKey;EndpointSuffix=core.windows.net"
             echo "STORAGE_CONNECTION=$storageConnection" >> $env:GITHUB_OUTPUT
-            Write-Host "✅ Storage connection string retrieved from existing storage account"
+            Write-Host "Storage connection string retrieved from existing storage account"
           } else {
-            Write-Host "❌ Failed to retrieve storage account key"
+            Write-Host "Failed to retrieve storage account key"
             exit 1
           }
 
@@ -148,14 +137,10 @@ jobs:
           $dotnetEnv = if ($environment -eq "prod") { "Production" } else { "Development" }
           $deployedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
-          # Get storage connection string from previous steps
-          $storageConnection = ""
-          if ("${{ steps.bicep-deploy.outputs.STORAGE_CONNECTION }}" -ne "") {
-            $storageConnection = "${{ steps.bicep-deploy.outputs.STORAGE_CONNECTION }}"
-          } elseif ("${{ steps.get-storage.outputs.STORAGE_CONNECTION }}" -ne "") {
-            $storageConnection = "${{ steps.get-storage.outputs.STORAGE_CONNECTION }}"
-          } else {
-            Write-Host "❌ No storage connection string available"
+          # Get storage connection string from get-storage step
+          $storageConnection = "${{ steps.get-storage.outputs.STORAGE_CONNECTION }}"
+          if ($storageConnection -eq "") {
+            Write-Host "No storage connection string available"
             exit 1
           }
 
@@ -209,13 +194,13 @@ jobs:
           try {
             $response = Invoke-WebRequest -Uri "$stagingUrl/api/health" -TimeoutSec 30 -ErrorAction Stop
             if ($response.Content -match "Healthy") {
-              Write-Host "✅ Smoke test passed: Health endpoint is working"
+              Write-Host "Smoke test passed: Health endpoint is working"
             } else {
-              Write-Host "❌ Smoke test failed: Health endpoint response unexpected"
+              Write-Host "Smoke test failed: Health endpoint response unexpected"
               exit 1
             }
           } catch {
-            Write-Host "❌ Smoke test failed: Health endpoint is not working"
+            Write-Host "Smoke test failed: Health endpoint is not working"
             Write-Host "Error: $($_.Exception.Message)"
             exit 1
           }
