@@ -138,7 +138,7 @@ jobs:
       AZURE_FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME_TEST }}
 
   deploy-prod:
-    needs: build
+    needs: [build, deploy-test]
     if: github.ref == 'refs/heads/main'
     permissions:
       id-token: write
