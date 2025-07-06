@@ -71,9 +71,9 @@ jobs:
 
       - name: Publish Function App
         run: |
-          dotnet publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }} `
-            --configuration Release `
-            --output ./publish `
+          dotnet publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }} \
+            --configuration Release \
+            --output ./publish \
             --no-build
 
       - name: Create deployment package
