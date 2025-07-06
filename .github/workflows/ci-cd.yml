@@ -45,21 +45,6 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install semantic-release
-        shell: pwsh
-        run: |
-          npm install -g semantic-release @semantic-release/changelog @semantic-release/git
-
-      - name: Generate version
-        id: semver
-        shell: pwsh
-        run: |
-          # For demonstration, using a simple timestamp-based version
-          # In production, you'd use semantic-release or similar
-          $version = "1.0.$(Get-Date -Format 'yyyyMMddHHmmss')"
-          echo "version=$version" >> $env:GITHUB_OUTPUT
-          Write-Host "Generated version: $version"
-
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
@@ -69,7 +54,6 @@ jobs:
             ${{ runner.os }}-nuget-
 
       - name: Restore dependencies
-        shell: pwsh
         run: dotnet restore
 
       - name: Lint Bicep files
@@ -80,15 +64,12 @@ jobs:
             az bicep lint --file infra/main.bicep
 
       - name: Build solution
-        shell: pwsh
         run: dotnet build --configuration Release --no-restore
 
       - name: Run tests
-        shell: pwsh
         run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
 
       - name: Publish Function App
-        shell: pwsh
         run: |
           dotnet publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }} `
             --configuration Release `
@@ -96,11 +77,18 @@ jobs:
             --no-build
 
       - name: Create deployment package
-        shell: pwsh
         run: |
-          Set-Location publish
-          Compress-Archive -Path * -DestinationPath ../function-app.zip
-          Set-Location ..
+          cd publish
+          zip -r ../function-app.zip *
+          cd ..
+
+      - name: Run semantic-release
+        run: |
+          npx semantic-release
+
+      - name: Get version from tag
+        id: semver
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
       - name: Upload Function App artifact
         uses: actions/upload-artifact@v4
@@ -119,7 +107,7 @@ jobs:
 
   deploy-test:
     needs: build
-    if: github.ref == 'refs/heads/develop' || github.event_name == 'pull_request'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.event_name == 'pull_request'
     permissions:
       id-token: write
       contents: read
