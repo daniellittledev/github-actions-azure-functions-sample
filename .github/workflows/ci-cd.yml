@@ -72,14 +72,12 @@ jobs:
         shell: pwsh
         run: dotnet restore
 
-      - name: Setup Azure CLI
-        uses: azure/setup-cli@v2
-
       - name: Lint Bicep files
         if: steps.changes.outputs.infra == 'true'
-        shell: pwsh
-        run: |
-          az bicep lint --file infra/main.bicep
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az bicep lint --file infra/main.bicep
 
       - name: Build solution
         shell: pwsh
