@@ -122,6 +122,9 @@ jobs:
   deploy-test:
     needs: build
     if: github.ref == 'refs/heads/develop' || github.event_name == 'pull_request'
+    permissions:
+      id-token: write
+      contents: read
     uses: ./.github/workflows/deploy.yml
     with:
       environment: test
@@ -137,6 +140,9 @@ jobs:
   deploy-prod:
     needs: build
     if: github.ref == 'refs/heads/main'
+    permissions:
+      id-token: write
+      contents: read
     uses: ./.github/workflows/deploy.yml
     with:
       environment: prod
