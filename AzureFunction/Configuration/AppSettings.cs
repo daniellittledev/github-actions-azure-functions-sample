@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.Extensions.Options;
 
 namespace AzureFunction.Configuration;
 
@@ -11,21 +12,7 @@ public class AppSettings
 
   public string? ApplicationInsightsConnectionString { get; set; }
 
-  public DatabaseSettings Database { get; set; } = new();
-
   public ExternalApiSettings ExternalApi { get; set; } = new();
-
-  public SecuritySettings Security { get; set; } = new();
-}
-
-public class DatabaseSettings
-{
-  [Required]
-  public string ConnectionString { get; set; } = string.Empty;
-
-  public int CommandTimeout { get; set; } = 30;
-
-  public int MaxRetryCount { get; set; } = 3;
 }
 
 public class ExternalApiSettings
@@ -39,12 +26,32 @@ public class ExternalApiSettings
   public int TimeoutSeconds { get; set; } = 30;
 }
 
-public class SecuritySettings
+public class AppSettingsValidator : IValidateOptions<AppSettings>
 {
-  [Required]
-  public string JwtSecret { get; set; } = string.Empty;
+  public ValidateOptionsResult Validate(string? name, AppSettings options)
+  {
+    var errors = new List<string>();
 
-  public int TokenExpirationMinutes { get; set; } = 60;
+    if (string.IsNullOrEmpty(options.Environment))
+    {
+      errors.Add("Environment is required");
+    }
 
-  public string[] AllowedOrigins { get; set; } = Array.Empty<string>();
+    if (string.IsNullOrEmpty(options.ExternalApi.BaseUrl))
+    {
+      errors.Add("External API base URL is required");
+    }
+
+    if (string.IsNullOrEmpty(options.ExternalApi.ApiKey))
+    {
+      errors.Add("External API key is required");
+    }
+
+    if (errors.Any())
+    {
+      return ValidateOptionsResult.Fail(errors);
+    }
+
+    return ValidateOptionsResult.Success;
+  }
 }

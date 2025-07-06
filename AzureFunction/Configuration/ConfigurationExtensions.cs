@@ -3,7 +3,6 @@ using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.Azure.Functions.Worker.Builder;
 
@@ -13,12 +12,8 @@ public static class ConfigurationExtensions
 {
   public static FunctionsApplicationBuilder ConfigureAppConfiguration(this FunctionsApplicationBuilder builder)
   {
-    // Get the current configuration
-    var configuration = builder.Configuration;
-    var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
-
-    // Create a new configuration builder
-    var configBuilder = new ConfigurationBuilder();
+    var configBuilder = builder.Configuration;
+    var environment = builder.Environment.EnvironmentName;
 
     // 1. Base configuration files
     configBuilder.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
@@ -33,31 +28,13 @@ public static class ConfigurationExtensions
     // 3. Environment variables
     configBuilder.AddEnvironmentVariables();
 
-    // 4. Azure Key Vault (for Production environment)
-    if (environment == "Production")
+    // 4. Azure Key Vault (for live environments)
+    if (environment != "Development")
     {
       AddKeyVaultConfiguration(configBuilder);
     }
 
-    // Build and replace the configuration
-    var newConfiguration = configBuilder.Build();
-
-    // Replace the configuration in the builder
-    foreach (var source in configBuilder.Sources)
-    {
-      builder.Configuration.Sources.Add(source);
-    }
-
     return builder;
-  }
-
-  public static IServiceCollection ConfigureAppSettings(this IServiceCollection services, IConfiguration configuration)
-  {
-    // Configure and validate AppSettings
-    services.Configure<AppSettings>(configuration.GetSection(AppSettings.SectionName));
-    services.AddSingleton<IValidateOptions<AppSettings>, AppSettingsValidator>();
-
-    return services;
   }
 
   private static void AddKeyVaultConfiguration(IConfigurationBuilder config)
@@ -73,42 +50,32 @@ public static class ConfigurationExtensions
         var credential = new DefaultAzureCredential();
         var secretClient = new SecretClient(new Uri(keyVaultUrl), credential);
         config.AddAzureKeyVault(secretClient, new KeyVaultSecretManager());
-      }
-      catch (Exception ex)
+      } catch (Exception ex)
       {
         // Log the error but don't fail the application startup
         Console.WriteLine($"Warning: Could not connect to Key Vault: {ex.Message}");
       }
     }
   }
-}
 
-public class AppSettingsValidator : IValidateOptions<AppSettings>
-{
-  public ValidateOptionsResult Validate(string? name, AppSettings options)
+  public static IServiceCollection ConfigureAppSettings(this IServiceCollection services, IConfiguration configuration)
   {
-    var errors = new List<string>();
+    // Configure and validate AppSettings
+    services.AddSingleton<IValidateOptions<AppSettings>, AppSettingsValidator>();
+    services
+      .AddOptions<AppSettings>()
+      .Bind(configuration.GetSection(AppSettings.SectionName))
+      .ValidateDataAnnotations()
+      .ValidateOnStart();
 
-    if (string.IsNullOrEmpty(options.Environment))
-      errors.Add("Environment is required");
+    return services;
+  }
 
-    if (string.IsNullOrEmpty(options.Database.ConnectionString))
-      errors.Add("Database connection string is required");
-
-    if (string.IsNullOrEmpty(options.ExternalApi.BaseUrl))
-      errors.Add("External API base URL is required");
-
-    if (string.IsNullOrEmpty(options.ExternalApi.ApiKey))
-      errors.Add("External API key is required");
-
-    if (string.IsNullOrEmpty(options.Security.JwtSecret))
-      errors.Add("JWT secret is required");
-
-    if (errors.Any())
-    {
-      return ValidateOptionsResult.Fail(errors);
-    }
-
-    return ValidateOptionsResult.Success;
+  //IServiceScope
+  public static void ValidateConfiguration(this IServiceProvider serviceProvider)
+  {
+    // Validate AppSettings configuration by resolving IOptions<AppSettings>
+    serviceProvider.GetRequiredService<IOptions<AppSettings>>();
   }
 }
+

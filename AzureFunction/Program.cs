@@ -10,7 +10,6 @@ builder.ConfigureAppConfiguration();
 
 builder.ConfigureFunctionsWebApplication();
 
-// Configure application settings with validation
 builder.Services.ConfigureAppSettings(builder.Configuration);
 
 builder.Services.AddHealthChecks();
@@ -20,7 +19,7 @@ var app = builder.Build();
 // Validate configuration on startup
 using (var scope = app.Services.CreateScope())
 {
-  ConfigurationValidationService.ValidateConfiguration(scope.ServiceProvider);
+  scope.ServiceProvider.ValidateConfiguration();
 }
 
 app.Run();
