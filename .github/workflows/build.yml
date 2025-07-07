@@ -102,5 +102,9 @@ jobs:
 
       - name: Run semantic-release (main branch only)
         if: github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Update package.json with correct repository URL
+          npm pkg set repository.url="https://github.com/${{ github.repository }}.git"
           npx semantic-release

@@ -8,9 +8,5 @@
   "devDependencies": {
     "semantic-release": "^22.0.0",
     "@semantic-release/github": "^9.0.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/your-username/GitHubActionsAzureFunctionSample.git"
   }
 }
