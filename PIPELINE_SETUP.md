@@ -1,6 +1,22 @@
 # GitHub Actions CI/CD Pipeline Setup Guide
 
-This document provides a setup guide for the GitHub Actions CI/CD pipeline implementing a three-step workflow: **Build**, **Deploy-Test**, and **Deploy-Prod** with shared deployment logic.
+This document provides a setup guide for the GitHub Actions CI/CD pipeline implementing a **release-based deployment workflow** with separate build and deploy workflows.
+
+## 🚀 Workflow Overview
+
+The pipeline has been split into two main workflows:
+
+1. **Build Workflow** (`build.yml`): Handles CI/CD for feature development and testing
+2. **Release Deploy Workflow** (`release-deploy.yml`): Handles production deployments triggered by GitHub releases
+3. **Deploy Workflow** (`deploy.yml`): Reusable deployment workflow used by both
+
+### Key Features
+
+- **Separation of Concerns**: Build/test logic separate from deployment logic
+- **Release-based Deployments**: Production deployments only happen via GitHub releases
+- **Automated Versioning**: Semantic-release handles version bumping and release creation
+- **Prerelease Support**: Prerelease versions only deploy to test environment
+- **Asset Management**: Build artifacts attached to GitHub releases for traceability
 
 ## 🚀 First Time Setup
 
@@ -23,23 +39,23 @@ az ad app create --display-name "github-actions-prod"
 Set up OIDC federated credentials for GitHub Actions (replace placeholders with your values):
 
 ```pwsh
-# For test environment
+# For test environment - allows any ref for test deployments
 az ad app federated-credential create `
   --id <TEST_APP_ID> `
   --parameters '{
     "name": "github-actions-test",
     "issuer": "https://token.actions.githubusercontent.com",
-    "subject": "repo:<YOUR_GITHUB_ORG>/<YOUR_REPO>:ref:refs/heads/develop",
+    "subject": "repo:<YOUR_GITHUB_ORG>/<YOUR_REPO>:environment:test",
     "audiences": ["api://AzureADTokenExchange"]
   }'
 
-# For production environment
+# For production environment - only releases can deploy to prod
 az ad app federated-credential create `
   --id <PROD_APP_ID> `
   --parameters '{
     "name": "github-actions-prod",
     "issuer": "https://token.actions.githubusercontent.com",
-    "subject": "repo:<YOUR_GITHUB_ORG>/<YOUR_REPO>:ref:refs/heads/main",
+    "subject": "repo:<YOUR_GITHUB_ORG>/<YOUR_REPO>:environment:prod",
     "audiences": ["api://AzureADTokenExchange"]
   }'
 ```
@@ -94,34 +110,65 @@ Configure these secrets in your GitHub repository settings:
 
 Ensure these workflow files exist in your repository:
 
-1. **`.github/workflows/ci-cd.yml`**: Main CI/CD pipeline
-2. **`.github/workflows/deploy.yml`**: Reusable deployment workflow
-3. **`infra/main.bicep`**: Infrastructure template
+1. **`.github/workflows/build.yml`**: Build and test pipeline
+2. **`.github/workflows/release-deploy.yml`**: Release-triggered deployment workflow
+3. **`.github/workflows/deploy.yml`**: Reusable deployment workflow
+4. **`infra/main.bicep`**: Infrastructure template
+5. **`package.json`**: Node.js dependencies for semantic-release
+6. **`.releaserc.json`**: Semantic-release configuration
+
+### 4. Semantic Release Setup
+
+The project uses semantic-release for automated versioning. Ensure your commits follow conventional commit format:
+
+- `feat:` - New features (minor version bump)
+- `fix:` - Bug fixes (patch version bump)
+- `BREAKING CHANGE:` - Breaking changes (major version bump)
+- `chore:`, `docs:`, `style:` - No version bump
 
 ## 📖 Usage
 
 ### Triggering Deployments
 
-#### Automatic Triggers
+#### Build Workflow Triggers
 
-- **Test Environment**: Push to `develop` branch or create pull requests to `main`
-- **Production Environment**: Push to `main` branch only
+- **Push to `main`**: Builds, tests, and creates GitHub release with semantic-release
+- **Push to `develop`**: Builds and tests (no release)
+- **Pull Requests to `main`**: Builds and tests (no deployment)
 
-#### Manual Deployment
+#### Release Deploy Workflow Triggers
 
-Use the GitHub Actions UI to manually trigger deployments via workflow dispatch.
-
-### Branch Strategy
-
-- **`develop`** → Deploys to **Test Environment**
-- **`main`** → Deploys to **Production Environment**
-- **Pull Requests to `main`** → Deploys to **Test Environment** for validation
+- **GitHub Release Published**: Automatically deploys to test, then production (if not prerelease)
 
 ### Deployment Process
 
-1. **Build Stage**: Compiles code, runs tests, creates artifacts
-2. **Test Deployment**: Automatically deploys to test environment
-3. **Production Deployment**: Deploys to production (main branch only)
+1. **Build Stage**: Developer pushes to `main` → Build workflow runs → Creates GitHub release
+2. **Test Deployment**: Release published → Downloads assets → Deploys to test environment
+3. **Production Deployment**: If release is NOT a prerelease → Deploys to production
+
+### Creating Releases
+
+#### Automatic Releases (Recommended)
+
+Push commits to `main` with conventional commit messages:
+
+```bash
+git commit -m "feat: add new user authentication"
+git commit -m "fix: resolve memory leak in data processing"
+git commit -m "feat!: change API response format
+
+BREAKING CHANGE: Response format changed from XML to JSON"
+```
+
+#### Manual Releases
+
+Create releases manually in GitHub UI, ensuring build artifacts are attached.
+
+### Prerelease Handling
+
+- **Prerelease versions** (e.g., `1.2.0-beta.1`) only deploy to test environment
+- **Production releases** (e.g., `1.2.0`) deploy to both test and production
+- Use `develop` branch with semantic-release to create prereleases
 
 ### Monitoring Deployments
 
@@ -133,20 +180,27 @@ Use the GitHub Actions UI to manually trigger deployments via workflow dispatch.
 
 ### Pipeline Overview
 
-The CI/CD pipeline consists of three main components:
+The CI/CD pipeline consists of three main workflows:
 
-1. **Build Job** (`ci-cd.yml`): Code compilation, testing, and artifact creation
-2. **Deploy-Test Job** (calls `deploy.yml`): Test environment deployment
-3. **Deploy-Prod Job** (calls `deploy.yml`): Production environment deployment
+1. **Build Workflow** (`build.yml`): Code compilation, testing, and release creation
+2. **Release Deploy Workflow** (`release-deploy.yml`): Release-triggered deployments
+3. **Deploy Workflow** (calls `deploy.yml`): Reusable deployment logic
 
-### Build Job Features
+### Build Workflow Features
 
 - **NuGet Package Caching**: Caches packages for faster builds
 - **Infrastructure Change Detection**: Only processes infrastructure when files change
 - **Bicep Linting**: Validates infrastructure templates
 - **Build & Test**: Compiles code and runs unit tests with coverage
-- **Artifact Creation**: Packages function app and infrastructure templates
-- **Semantic Versioning**: Generates timestamp-based versions
+- **Semantic Release**: Automatically creates GitHub releases with version bumping
+- **Asset Attachment**: Attaches function app and Bicep templates to releases
+
+### Release Deploy Workflow Features
+
+- **Asset Download**: Downloads build artifacts from GitHub release
+- **Environment Detection**: Determines deployment targets based on release type
+- **Prerelease Handling**: Skips production for prerelease versions
+- **Artifact Management**: Re-uploads assets as workflow artifacts for deployment
 
 ### Deployment Workflow Features
 
@@ -157,6 +211,13 @@ The CI/CD pipeline consists of three main components:
 - **Health Validation**: Checks deployment health before promoting to production
 
 ### Key Technical Decisions
+
+#### Release-Based Deployment Strategy
+
+- **GitHub Releases** act as the deployment trigger for production
+- **Build artifacts** are attached to releases for complete traceability
+- **Semantic versioning** ensures predictable version management
+- **Prerelease support** allows testing of release candidates
 
 #### Smart Infrastructure Deployment
 
@@ -176,3 +237,10 @@ The CI/CD pipeline consists of three main components:
 - **OIDC Authentication**: No stored credentials, uses federated identity
 - **Environment Isolation**: Separate service principals for test/production
 - **Least Privilege**: Minimal required permissions for each environment
+
+#### Workflow Separation Benefits
+
+- **Build Independence**: CI/CD can run without triggering deployments
+- **Release Control**: Explicit control over when production deployments occur
+- **Asset Versioning**: Build artifacts are versioned and stored with releases
+- **Rollback Capability**: Easy to redeploy previous versions from releases

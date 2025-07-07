@@ -1,0 +1,118 @@
+name: Deploy on Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  download-assets:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is-prerelease: ${{ steps.version.outputs.is-prerelease }}
+      has-function-app: ${{ steps.check-assets.outputs.has-function-app }}
+      has-bicep: ${{ steps.check-assets.outputs.has-bicep }}
+
+    steps:
+      - name: Extract version from release
+        id: version
+        run: |
+          echo "version=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          echo "is-prerelease=${{ github.event.release.prerelease }}" >> $GITHUB_OUTPUT
+
+      - name: Download release assets
+        shell: pwsh
+        run: |
+          # Get release assets using PowerShell
+          $headers = @{
+            "Authorization" = "token ${{ secrets.GITHUB_TOKEN }}"
+            "Accept" = "application/vnd.github.v3+json"
+          }
+
+          $assetsUrl = "${{ github.api_url }}/repos/${{ github.repository }}/releases/${{ github.event.release.id }}/assets"
+          $assets = Invoke-RestMethod -Uri $assetsUrl -Headers $headers
+
+          $functionAppAsset = $assets | Where-Object { $_.name -like "function-app-*" } | Select-Object -First 1
+          $bicepAsset = $assets | Where-Object { $_.name -like "bicep-templates-*" } | Select-Object -First 1
+
+          # Create assets directory
+          New-Item -ItemType Directory -Path "./assets" -Force | Out-Null
+
+          if ($functionAppAsset) {
+            Write-Host "Downloading function app asset..."
+            Invoke-WebRequest -Uri $functionAppAsset.browser_download_url -Headers $headers -OutFile "./assets/function-app.zip"
+          }
+
+          if ($bicepAsset) {
+            Write-Host "Downloading bicep templates..."
+            Invoke-WebRequest -Uri $bicepAsset.browser_download_url -Headers $headers -OutFile "./assets/bicep-templates.zip"
+            Expand-Archive -Path "./assets/bicep-templates.zip" -DestinationPath "./assets/bicep-templates/" -Force
+          }
+
+      - name: Check available assets
+        id: check-assets
+        shell: pwsh
+        run: |
+          if (Test-Path "./assets/function-app.zip") {
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "has-function-app=true"
+          } else {
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "has-function-app=false"
+          }
+
+          if (Test-Path "./assets/bicep-templates" -PathType Container) {
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "has-bicep=true"
+          } else {
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "has-bicep=false"
+          }
+
+      - name: Upload function app artifact for workflow
+        if: steps.check-assets.outputs.has-function-app == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: function-app-${{ steps.version.outputs.version }}
+          path: ./assets/function-app.zip
+          retention-days: 1
+
+      - name: Upload bicep artifact for workflow
+        if: steps.check-assets.outputs.has-bicep == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bicep-templates-${{ steps.version.outputs.version }}
+          path: ./assets/bicep-templates/
+          retention-days: 1
+
+  deploy-test:
+    needs: download-assets
+    if: needs.download-assets.outputs.has-function-app == 'true'
+    permissions:
+      id-token: write
+      contents: read
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: test
+      version: ${{ needs.download-assets.outputs.version }}
+      infra-changed: ${{ needs.download-assets.outputs.has-bicep }}
+    secrets:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_TEST }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID_TEST }}
+      AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP_TEST }}
+      AZURE_FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME_TEST }}
+
+  deploy-prod:
+    needs: [download-assets, deploy-test]
+    if: needs.download-assets.outputs.has-function-app == 'true' && needs.download-assets.outputs.is-prerelease == 'false'
+    permissions:
+      id-token: write
+      contents: read
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: prod
+      version: ${{ needs.download-assets.outputs.version }}
+      infra-changed: ${{ needs.download-assets.outputs.has-bicep }}
+    secrets:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_PROD }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID_PROD }}
+      AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP_PROD }}
+      AZURE_FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME_PROD }}

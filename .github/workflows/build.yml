@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: Build and Test
 
 on:
   push:
@@ -14,8 +14,9 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
-      version: ${{ steps.semver.outputs.version }}
       infra-changed: ${{ steps.changes.outputs.infra }}
 
     steps:
@@ -39,11 +40,6 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      - name: Setup Node.js (for semantic versioning)
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
@@ -82,61 +78,29 @@ jobs:
           zip -r ../function-app.zip *
           cd ..
 
-      - name: Run semantic-release
-        run: |
-          npx semantic-release
-
-      - name: Get version from tag
-        id: semver
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-
-      - name: Upload Function App artifact
+      - name: Upload Function App as release asset
+        if: github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
-          name: function-app-${{ steps.semver.outputs.version }}
+          name: function-app-build-${{ github.sha }}
           path: function-app.zip
           retention-days: 30
 
-      - name: Upload Bicep artifact
-        if: steps.changes.outputs.infra == 'true'
+      - name: Upload Bicep as release asset
+        if: github.ref == 'refs/heads/main' && steps.changes.outputs.infra == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: bicep-templates-${{ steps.semver.outputs.version }}
+          name: bicep-templates-build-${{ github.sha }}
           path: infra/
           retention-days: 30
 
-  deploy-test:
-    needs: build
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.event_name == 'pull_request'
-    permissions:
-      id-token: write
-      contents: read
-    uses: ./.github/workflows/deploy.yml
-    with:
-      environment: test
-      version: ${{ needs.build.outputs.version }}
-      infra-changed: ${{ needs.build.outputs.infra-changed }}
-    secrets:
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_TEST }}
-      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID_TEST }}
-      AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP_TEST }}
-      AZURE_FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME_TEST }}
+      - name: Setup Node.js (for semantic versioning)
+        if: github.ref == 'refs/heads/main'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
-  deploy-prod:
-    needs: [build, deploy-test]
-    if: github.ref == 'refs/heads/main'
-    permissions:
-      id-token: write
-      contents: read
-    uses: ./.github/workflows/deploy.yml
-    with:
-      environment: prod
-      version: ${{ needs.build.outputs.version }}
-      infra-changed: ${{ needs.build.outputs.infra-changed }}
-    secrets:
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_PROD }}
-      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID_PROD }}
-      AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP_PROD }}
-      AZURE_FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME_PROD }}
+      - name: Run semantic-release (main branch only)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          npx semantic-release @semantic-release/github
