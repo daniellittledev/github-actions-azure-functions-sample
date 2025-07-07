@@ -42,45 +42,44 @@ jobs:
 
       - name: Download release artifacts
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # Get release information using PowerShell
-          $headers = @{
-            "Authorization" = "token ${{ github.token }}"
-            "Accept" = "application/vnd.github.v3+json"
-          }
+          # Create artifacts directory
+          New-Item -ItemType Directory -Path "./artifacts" -Force | Out-Null
 
-          # Get the release by tag name (version)
-          $releaseUrl = "${{ github.api_url }}/repos/${{ github.repository }}/releases/tags/${{ inputs.version }}"
-          $release = Invoke-RestMethod -Uri $releaseUrl -Headers $headers
+          # Download function app asset using gh cli
+          Write-Host "Downloading function app asset from release ${{ inputs.version }}..."
+          gh release download ${{ inputs.version }} --pattern "function-app-*" --dir "./artifacts"
 
-          # Get release assets
-          $assetsUrl = "${{ github.api_url }}/repos/${{ github.repository }}/releases/$($release.id)/assets"
-          $assets = Invoke-RestMethod -Uri $assetsUrl -Headers $headers
-
-          # Find and download function app asset
-          $functionAppAsset = $assets | Where-Object { $_.name -like "function-app-*" } | Select-Object -First 1
-          if ($functionAppAsset) {
-            Write-Host "Downloading function app asset: $($functionAppAsset.name)"
-            New-Item -ItemType Directory -Path "./artifacts" -Force | Out-Null
-            Invoke-WebRequest -Uri $functionAppAsset.browser_download_url -Headers $headers -OutFile "./artifacts/function-app.zip"
-            Write-Host "Function app asset downloaded successfully"
+          # Rename the downloaded file to a consistent name
+          $functionAppFile = Get-ChildItem "./artifacts/function-app-*" | Select-Object -First 1
+          if ($functionAppFile) {
+            Rename-Item $functionAppFile.FullName -NewName "function-app.zip"
+            Write-Host "Function app asset downloaded and renamed to function-app.zip"
           } else {
             Write-Host "Function app asset not found in release"
             exit 1
           }
 
-          # Find and download bicep templates if infrastructure changed
+          # Download bicep templates if infrastructure changed
           if ("${{ inputs.infra-changed }}" -eq "true") {
-            $bicepAsset = $assets | Where-Object { $_.name -like "bicep-templates-*" } | Select-Object -First 1
-            if ($bicepAsset) {
-              Write-Host "Downloading bicep templates: $($bicepAsset.name)"
-              New-Item -ItemType Directory -Path "./bicep-artifacts" -Force | Out-Null
-              Invoke-WebRequest -Uri $bicepAsset.browser_download_url -Headers $headers -OutFile "./bicep-artifacts/bicep-templates.zip"
-              Expand-Archive -Path "./bicep-artifacts/bicep-templates.zip" -DestinationPath "./bicep-artifacts/" -Force
-              Remove-Item "./bicep-artifacts/bicep-templates.zip" -Force
-              Write-Host "Bicep templates downloaded and extracted successfully"
-            } else {
+            Write-Host "Infrastructure changed, downloading bicep templates..."
+            New-Item -ItemType Directory -Path "./bicep-artifacts" -Force | Out-Null
+            
+            try {
+              gh release download ${{ inputs.version }} --pattern "bicep-templates-*" --dir "./bicep-artifacts"
+              
+              # Extract bicep templates
+              $bicepFile = Get-ChildItem "./bicep-artifacts/bicep-templates-*" | Select-Object -First 1
+              if ($bicepFile) {
+                Expand-Archive -Path $bicepFile.FullName -DestinationPath "./bicep-artifacts/" -Force
+                Remove-Item $bicepFile.FullName -Force
+                Write-Host "Bicep templates downloaded and extracted successfully"
+              }
+            } catch {
               Write-Host "Warning: Infrastructure changed but bicep templates asset not found in release"
+              Write-Host "Error: $($_.Exception.Message)"
             }
           }
 
