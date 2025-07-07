@@ -40,18 +40,49 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download Function App artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: function-app-${{ inputs.version }}
-          path: ./artifacts
+      - name: Download release artifacts
+        shell: pwsh
+        run: |
+          # Get release information using PowerShell
+          $headers = @{
+            "Authorization" = "token ${{ github.token }}"
+            "Accept" = "application/vnd.github.v3+json"
+          }
 
-      - name: Download Bicep artifact
-        if: inputs.infra-changed == 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: bicep-templates-${{ inputs.version }}
-          path: ./bicep-artifacts
+          # Get the release by tag name (version)
+          $releaseUrl = "${{ github.api_url }}/repos/${{ github.repository }}/releases/tags/${{ inputs.version }}"
+          $release = Invoke-RestMethod -Uri $releaseUrl -Headers $headers
+
+          # Get release assets
+          $assetsUrl = "${{ github.api_url }}/repos/${{ github.repository }}/releases/$($release.id)/assets"
+          $assets = Invoke-RestMethod -Uri $assetsUrl -Headers $headers
+
+          # Find and download function app asset
+          $functionAppAsset = $assets | Where-Object { $_.name -like "function-app-*" } | Select-Object -First 1
+          if ($functionAppAsset) {
+            Write-Host "Downloading function app asset: $($functionAppAsset.name)"
+            New-Item -ItemType Directory -Path "./artifacts" -Force | Out-Null
+            Invoke-WebRequest -Uri $functionAppAsset.browser_download_url -Headers $headers -OutFile "./artifacts/function-app.zip"
+            Write-Host "Function app asset downloaded successfully"
+          } else {
+            Write-Host "Function app asset not found in release"
+            exit 1
+          }
+
+          # Find and download bicep templates if infrastructure changed
+          if ("${{ inputs.infra-changed }}" -eq "true") {
+            $bicepAsset = $assets | Where-Object { $_.name -like "bicep-templates-*" } | Select-Object -First 1
+            if ($bicepAsset) {
+              Write-Host "Downloading bicep templates: $($bicepAsset.name)"
+              New-Item -ItemType Directory -Path "./bicep-artifacts" -Force | Out-Null
+              Invoke-WebRequest -Uri $bicepAsset.browser_download_url -Headers $headers -OutFile "./bicep-artifacts/bicep-templates.zip"
+              Expand-Archive -Path "./bicep-artifacts/bicep-templates.zip" -DestinationPath "./bicep-artifacts/" -Force
+              Remove-Item "./bicep-artifacts/bicep-templates.zip" -Force
+              Write-Host "Bicep templates downloaded and extracted successfully"
+            } else {
+              Write-Host "Warning: Infrastructure changed but bicep templates asset not found in release"
+            }
+          }
 
       - name: Azure Login using OIDC
         uses: azure/login@v2
