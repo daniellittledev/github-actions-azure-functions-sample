@@ -1,5 +1,4 @@
-name: Deploy on Release
-
+name: Deploy
 on:
   release:
     types: [published]
@@ -40,7 +39,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    uses: ./.github/workflows/deploy.yml
+    uses: ./.github/workflows/reusable/deploy.yml
     with:
       environment: test
       version: ${{ needs.check-release.outputs.version }}
@@ -58,7 +57,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    uses: ./.github/workflows/deploy.yml
+    uses: ./.github/workflows/reusable/deploy.yml
     with:
       environment: prod
       version: ${{ needs.check-release.outputs.version }}

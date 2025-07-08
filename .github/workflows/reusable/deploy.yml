@@ -1,4 +1,4 @@
-name: Deploy Azure Function
+name: Deploy App
 
 on:
   workflow_call:
