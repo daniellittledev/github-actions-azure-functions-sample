@@ -39,7 +39,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    uses: ./.github/workflows/reusable/deploy.yml
+    uses: ./.github/workflows/_deploy-to-env.yml
     with:
       environment: test
       version: ${{ needs.check-release.outputs.version }}
@@ -57,7 +57,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    uses: ./.github/workflows/reusable/deploy.yml
+    uses: ./.github/workflows/_deploy-to-env.yml
     with:
       environment: prod
       version: ${{ needs.check-release.outputs.version }}
