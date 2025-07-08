@@ -422,13 +422,6 @@ publish/
 .terraform/
 terraform.tfvars
 
-# Bicep build output
-*.json
-!package.json
-!package-lock.json
-!tsconfig.json
-!.vscode/*.json
-
 # Container images
 *.tar
 

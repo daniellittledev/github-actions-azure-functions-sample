@@ -1,0 +1,31 @@
+{
+  "branches": [
+    "main",
+    {
+      "name": "develop",
+      "prerelease": "beta"
+    }
+  ],
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    ["@semantic-release/npm", false],
+    [
+      "@semantic-release/github",
+      {
+        "assets": [
+          {
+            "path": "function-app.zip",
+            "name": "function-app-${nextRelease.version}.zip",
+            "label": "Azure Function App Package"
+          },
+          {
+            "path": "infra/",
+            "name": "bicep-templates-${nextRelease.version}.zip",
+            "label": "Bicep Infrastructure Templates"
+          }
+        ]
+      }
+    ]
+  ]
+}
