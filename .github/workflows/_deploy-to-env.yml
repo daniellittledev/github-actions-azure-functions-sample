@@ -11,10 +11,6 @@ on:
         required: true
         type: string
         description: "Version number for deployment"
-      infra-changed:
-        required: true
-        type: string
-        description: "Whether infrastructure files have changed"
     secrets:
       AZURE_CLIENT_ID:
         required: true
@@ -62,25 +58,22 @@ jobs:
             exit 1
           }
 
-          # Download bicep templates if infrastructure changed
-          if ("${{ inputs.infra-changed }}" -eq "true") {
-            Write-Host "Infrastructure changed, downloading bicep templates..."
-            New-Item -ItemType Directory -Path "./bicep-artifacts" -Force | Out-Null
+          Write-Host "Infrastructure changed, downloading bicep templates..."
+          New-Item -ItemType Directory -Path "./bicep-artifacts" -Force | Out-Null
+
+          try {
+            gh release download ${{ inputs.version }} --pattern "bicep-templates-*" --dir "./bicep-artifacts"
             
-            try {
-              gh release download ${{ inputs.version }} --pattern "bicep-templates-*" --dir "./bicep-artifacts"
-              
-              # Extract bicep templates
-              $bicepFile = Get-ChildItem "./bicep-artifacts/bicep-templates-*" | Select-Object -First 1
-              if ($bicepFile) {
-                Expand-Archive -Path $bicepFile.FullName -DestinationPath "./bicep-artifacts/" -Force
-                Remove-Item $bicepFile.FullName -Force
-                Write-Host "Bicep templates downloaded and extracted successfully"
-              }
-            } catch {
-              Write-Host "Warning: Infrastructure changed but bicep templates asset not found in release"
-              Write-Host "Error: $($_.Exception.Message)"
+            # Extract bicep templates
+            $bicepFile = Get-ChildItem "./bicep-artifacts/bicep-templates-*" | Select-Object -First 1
+            if ($bicepFile) {
+              Expand-Archive -Path $bicepFile.FullName -DestinationPath "./bicep-artifacts/" -Force
+              Remove-Item $bicepFile.FullName -Force
+              Write-Host "Bicep templates downloaded and extracted successfully"
             }
+          } catch {
+            Write-Host "Warning: Bicep templates asset not found in release"
+            Write-Host "Error: $($_.Exception.Message)"
           }
 
       - name: Azure Login using OIDC
@@ -91,17 +84,22 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Deploy Bicep Infrastructure
-        if: inputs.infra-changed == 'true'
         shell: pwsh
         run: |
-          Write-Host "Deploying Bicep template: main.bicep"
-          az deployment group create `
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
-            --template-file ./bicep-artifacts/main.bicep `
-            --parameters functionAppName=${{ secrets.AZURE_FUNCTIONAPP_NAME }} `
-            --mode Incremental
+          # Check if bicep templates were successfully downloaded
+          if (Test-Path "./bicep-artifacts/main.bicep") {
+            Write-Host "Bicep templates found, deploying infrastructure..."
+            Write-Host "Deploying Bicep template: main.bicep"
+            az deployment group create `
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
+              --template-file ./bicep-artifacts/main.bicep `
+              --parameters functionAppName=${{ secrets.AZURE_FUNCTIONAPP_NAME }} `
+              --mode Incremental
 
-          Write-Host "Bicep infrastructure deployment completed"
+            Write-Host "Bicep infrastructure deployment completed"
+          } else {
+            Write-Host "No bicep templates found in release, skipping infrastructure deployment"
+          }
 
       - name: Get Storage Connection String
         id: get-storage
