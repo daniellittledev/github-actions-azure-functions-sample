@@ -113,6 +113,8 @@ jobs:
           npm run semantic-release
 
       - name: Get prerelease status
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Tag: v$RELEASE_TAG"
           PRERELEASE=$(gh release view "v$RELEASE_TAG" --json isPrerelease -q .isPrerelease)
