@@ -2,48 +2,25 @@ name: Deploy
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag"
+        required: true
+      prerelease:
+        description: "Is prerelease"
+        required: true
+        default: "false"
 
 jobs:
-  check-release:
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.check-assets.outputs.version }}
-      is-prerelease: ${{ steps.check-assets.outputs.is-prerelease }}
-      has-function-app: ${{ steps.check-assets.outputs.has-function-app }}
-      has-bicep: ${{ steps.check-assets.outputs.has-bicep }}
-
-    steps:
-      - name: Check release assets
-        id: check-assets
-        shell: pwsh
-        run: |
-          $headers = @{
-            "Authorization" = "token ${{ secrets.GITHUB_TOKEN }}"
-            "Accept" = "application/vnd.github.v3+json"
-          }
-
-          $assetsUrl = "${{ github.api_url }}/repos/${{ github.repository }}/releases/${{ github.event.release.id }}/assets"
-          $assets = Invoke-RestMethod -Uri $assetsUrl -Headers $headers
-
-          $functionAppAsset = $assets | Where-Object { $_.name -like "function-app-*" }
-          $bicepAsset = $assets | Where-Object { $_.name -like "bicep-templates-*" }
-
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "has-function-app=$($null -ne $functionAppAsset)"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "has-bicep=$($null -ne $bicepAsset)"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "version=${{ github.event.release.tag_name }}"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "is-prerelease=${{ github.event.release.prerelease }}"
-
   deploy-test:
-    needs: check-release
-    if: needs.check-release.outputs.has-function-app == 'true'
     permissions:
       id-token: write
       contents: read
     uses: ./.github/workflows/_deploy-to-env.yml
     with:
       environment: test
-      version: ${{ needs.check-release.outputs.version }}
-      infra-changed: ${{ needs.check-release.outputs.has-bicep }}
+      version: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.tag }}
     secrets:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_TEST }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -52,16 +29,15 @@ jobs:
       AZURE_FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME_TEST }}
 
   deploy-prod:
-    needs: [check-release, deploy-test]
-    if: needs.check-release.outputs.has-function-app == 'true' && needs.check-release.outputs.is-prerelease == 'false'
+    needs: [deploy-test]
+    if: (github.event_name == 'release' && github.event.release.prerelease  || github.event.inputs.prerelease) == 'false'
     permissions:
       id-token: write
       contents: read
     uses: ./.github/workflows/_deploy-to-env.yml
     with:
       environment: prod
-      version: ${{ needs.check-release.outputs.version }}
-      infra-changed: ${{ needs.check-release.outputs.has-bicep }}
+      version: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.tag }}
     secrets:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_PROD }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}

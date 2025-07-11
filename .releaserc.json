@@ -25,6 +25,12 @@
           }
         ]
       }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "successCmd": "echo RELEASE_TAG=${nextRelease.version} >> $GITHUB_ENV"
+      }
     ]
   ]
 }

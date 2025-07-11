@@ -108,3 +108,20 @@ jobs:
           # Update package.json with correct repository URL
           npm pkg set repository.url="https://github.com/${{ github.repository }}.git"
           npx semantic-release
+
+      - name: Get prerelease status
+        run: |
+          echo "Tag: v$RELEASE_TAG"
+          PRERELEASE=$(gh release view "v$RELEASE_TAG" --json isPrerelease -q .isPrerelease)
+          echo "PRERELEASE=$PRERELEASE" >> $GITHUB_ENV
+
+      - name: Trigger deploy
+        run: |
+          echo "Release tag: $RELEASE_TAG"
+          echo "Is prerelease? $PRERELEASE"
+          gh workflow run deploy.yml \
+            --ref main \
+            -f tag="$RELEASE_TAG"
+            -f prerelease="$PRERELEASE"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
