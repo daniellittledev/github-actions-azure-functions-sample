@@ -127,7 +127,7 @@ jobs:
           echo "Is prerelease? $PRERELEASE"
           gh workflow run deploy.yml \
             --ref main \
-            -f tag="$RELEASE_TAG"
+            -f tag="v$RELEASE_TAG" \
             -f prerelease="$PRERELEASE"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
