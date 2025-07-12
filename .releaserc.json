@@ -19,7 +19,7 @@
             "label": "Azure Function App Package"
           },
           {
-            "path": "infra/",
+            "path": "bicep-templates.zip",
             "name": "bicep-templates-${nextRelease.version}.zip",
             "label": "Bicep Infrastructure Templates"
           }

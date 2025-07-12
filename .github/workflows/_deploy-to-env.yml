@@ -49,7 +49,7 @@ jobs:
           gh release download ${{ inputs.version }} --pattern "function-app-*" --dir "./artifacts"
 
           # Rename the downloaded file to a consistent name
-          $functionAppFile = Get-ChildItem "./artifacts/function-app-*" | Select-Object -First 1
+          $functionAppFile = Get-ChildItem "./artifacts/function-app-*.zip" | Select-Object -First 1
           if ($functionAppFile) {
             Rename-Item $functionAppFile.FullName -NewName "function-app.zip"
             Write-Host "Function app asset downloaded and renamed to function-app.zip"
@@ -62,11 +62,13 @@ jobs:
           New-Item -ItemType Directory -Path "./bicep-artifacts" -Force | Out-Null
 
           try {
+            Write-Host "Downloading bicep templates asset from release ${{ inputs.version }}..."
             gh release download ${{ inputs.version }} --pattern "bicep-templates-*" --dir "./bicep-artifacts"
             
             # Extract bicep templates
             $bicepFile = Get-ChildItem "./bicep-artifacts/bicep-templates-*" | Select-Object -First 1
             if ($bicepFile) {
+              Write-Host "Extracting Bicep templates"
               Expand-Archive -Path $bicepFile.FullName -DestinationPath "./bicep-artifacts/" -Force
               Remove-Item $bicepFile.FullName -Force
               Write-Host "Bicep templates downloaded and extracted successfully"

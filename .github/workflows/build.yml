@@ -79,6 +79,12 @@ jobs:
           zip -r ../function-app.zip *
           cd ..
 
+      - name: Create infra package
+        run: |
+          cd infra
+          zip -r ../bicep-templates.zip *
+          cd ..
+
       - name: Upload Function App as release asset
         if: github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
