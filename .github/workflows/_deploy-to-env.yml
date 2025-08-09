@@ -115,7 +115,7 @@ jobs:
 
           # Get the storage account name from function app name
           $functionAppName = "${{ vars.AZURE_FUNCTIONAPP_NAME }}"
-          $storageAccountName = "$($functionAppName -replace '-', '')st"
+          $storageAccountName = "$($functionAppName -replace '-', '')fsa"
 
           # Get storage account key
           $storageKey = az storage account keys list `
