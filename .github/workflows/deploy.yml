@@ -14,6 +14,7 @@ on:
 
 jobs:
   deploy-test:
+    name: Deploy to Test
     permissions:
       id-token: write
       contents: read
@@ -22,15 +23,16 @@ jobs:
       environment: test
       version: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.tag }}
     secrets:
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_TEST }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID_TEST }}
-      AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP_TEST }}
-      AZURE_FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME_TEST }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_FUNCTIONAPP_NAME: ${{ vars.AZURE_FUNCTIONAPP_NAME }}
 
   deploy-prod:
+    name: Deploy to Production
     needs: [deploy-test]
-    if: (github.event_name == 'release' && github.event.release.prerelease  || github.event.inputs.prerelease) == 'false'
+    if: (github.event_name == 'release' && github.event.release.prerelease || github.event.inputs.prerelease) == 'false'
     permissions:
       id-token: write
       contents: read
@@ -39,8 +41,8 @@ jobs:
       environment: prod
       version: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.tag }}
     secrets:
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_PROD }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID_PROD }}
-      AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP_PROD }}
-      AZURE_FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME_PROD }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_FUNCTIONAPP_NAME: ${{ vars.AZURE_FUNCTIONAPP_NAME }}
