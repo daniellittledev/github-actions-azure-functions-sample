@@ -11,16 +11,20 @@ on:
         required: true
         type: string
         description: "Version number for deployment"
+      AZURE_RESOURCE_GROUP:
+        required: true
+        type: string
+        description: "Azure resource group name"
+      AZURE_FUNCTIONAPP_NAME:
+        required: true
+        type: string
+        description: "Azure function app name"
     secrets:
       AZURE_CLIENT_ID:
         required: true
       AZURE_TENANT_ID:
         required: true
       AZURE_SUBSCRIPTION_ID:
-        required: true
-      AZURE_RESOURCE_GROUP:
-        required: true
-      AZURE_FUNCTIONAPP_NAME:
         required: true
 
 permissions:
@@ -93,9 +97,9 @@ jobs:
             Write-Host "Bicep templates found, deploying infrastructure..."
             Write-Host "Deploying Bicep template: main.bicep"
             az deployment group create `
-              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
+              --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} `
               --template-file ./bicep-artifacts/main.bicep `
-              --parameters functionAppName=${{ secrets.AZURE_FUNCTIONAPP_NAME }} `
+              --parameters functionAppName=${{ vars.AZURE_FUNCTIONAPP_NAME }} `
               --mode Incremental
 
             Write-Host "Bicep infrastructure deployment completed"
@@ -110,13 +114,13 @@ jobs:
           Write-Host "Retrieving storage connection string from existing storage account..."
 
           # Get the storage account name from function app name
-          $functionAppName = "${{ secrets.AZURE_FUNCTIONAPP_NAME }}"
-          $storageAccountName = "${$functionAppName -replace '-', ''}st"
+          $functionAppName = "${{ vars.AZURE_FUNCTIONAPP_NAME }}"
+          $storageAccountName = "$($functionAppName -replace '-', '')st"
 
           # Get storage account key
           $storageKey = az storage account keys list `
             --account-name $storageAccountName `
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
+            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} `
             --query "[0].value" `
             --output tsv
 
@@ -135,16 +139,16 @@ jobs:
         run: |
           # Check if staging slot exists, create if not
           $slots = az functionapp deployment slot list `
-            --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} `
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
+            --name ${{ vars.AZURE_FUNCTIONAPP_NAME }} `
+            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} `
             --query "[?name=='staging']" `
             --output tsv
 
           if (-not $slots) {
             Write-Host "Creating staging slot..."
             az functionapp deployment slot create `
-              --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} `
-              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
+              --name ${{ vars.AZURE_FUNCTIONAPP_NAME }} `
+              --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} `
               --slot staging
           } else {
             Write-Host "Staging slot already exists"
@@ -154,8 +158,8 @@ jobs:
         shell: pwsh
         run: |
           az functionapp deployment source config-zip `
-            --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} `
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
+            --name ${{ vars.AZURE_FUNCTIONAPP_NAME }} `
+            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} `
             --slot staging `
             --src ./artifacts/function-app.zip
 
@@ -176,8 +180,8 @@ jobs:
 
           Write-Host "Configuring app settings for staging slot..."
           az functionapp config appsettings set `
-            --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} `
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
+            --name ${{ vars.AZURE_FUNCTIONAPP_NAME }} `
+            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} `
             --slot staging `
             --settings `
               "FUNCTIONS_EXTENSION_VERSION=~4" `
@@ -197,7 +201,7 @@ jobs:
           Start-Sleep -Seconds 30
 
           # Health check on staging slot
-          $stagingUrl = "https://${{ secrets.AZURE_FUNCTIONAPP_NAME }}-staging.azurewebsites.net"
+          $stagingUrl = "https://${{ vars.AZURE_FUNCTIONAPP_NAME }}-staging.azurewebsites.net"
 
           # Try to hit the health endpoint (assuming you have one)
           for ($i = 1; $i -le 10; $i++) {
@@ -218,7 +222,7 @@ jobs:
         run: |
           # Add your smoke tests here
           Write-Host "Running smoke tests on staging slot..."
-          $stagingUrl = "https://${{ secrets.AZURE_FUNCTIONAPP_NAME }}-staging.azurewebsites.net"
+          $stagingUrl = "https://${{ vars.AZURE_FUNCTIONAPP_NAME }}-staging.azurewebsites.net"
 
           # Example smoke test
           try {
@@ -240,8 +244,8 @@ jobs:
         run: |
           Write-Host "Swapping staging slot to production..."
           az functionapp deployment slot swap `
-            --name ${{ secrets.AZURE_FUNCTIONAPP_NAME }} `
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} `
+            --name ${{ vars.AZURE_FUNCTIONAPP_NAME }} `
+            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} `
             --slot staging `
             --target-slot production
 
@@ -249,7 +253,7 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "Verifying production deployment..."
-          $prodUrl = "https://${{ secrets.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net"
+          $prodUrl = "https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net"
 
           # Wait a bit for the swap to complete
           Start-Sleep -Seconds 15
