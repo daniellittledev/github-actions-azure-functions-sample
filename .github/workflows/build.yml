@@ -76,7 +76,7 @@ jobs:
       - name: Create deployment package
         run: |
           cd publish
-          zip -r ../function-app.zip *
+          zip -r ../function-app.zip * .*
           cd ..
 
       - name: Create infra package
