@@ -1,7 +1,8 @@
+using System.Text.Json;
+using AzureFunction.Configuration;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using AzureFunction.Configuration;
 
 var builder = FunctionsApplication.CreateBuilder(args);
 
@@ -13,6 +14,11 @@ builder.ConfigureFunctionsWebApplication();
 builder.Services.ConfigureAppSettings(builder.Configuration);
 
 builder.Services.AddHealthChecks();
+
+builder.Services.Configure<JsonSerializerOptions>(options =>
+{
+    options.WriteIndented = true;
+});
 
 var app = builder.Build();
 

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.Azure.Functions.Worker.Builder;
+using Microsoft.Extensions.Hosting;
 
 namespace AzureFunction.Configuration;
 
@@ -13,14 +14,14 @@ public static class ConfigurationExtensions
   public static FunctionsApplicationBuilder ConfigureAppConfiguration(this FunctionsApplicationBuilder builder)
   {
     var configBuilder = builder.Configuration;
-    var environment = builder.Environment.EnvironmentName;
-
+    var environment = builder.Environment;
+        
     // 1. Base configuration files
     configBuilder.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
     configBuilder.AddJsonFile($"appsettings.{environment}.json", optional: true, reloadOnChange: true);
 
     // 2. User secrets (for Development environment only)
-    if (environment == "Development")
+    if (builder.Environment.IsDevelopment())
     {
       configBuilder.AddUserSecrets<Program>(optional: true);
     }
@@ -29,7 +30,7 @@ public static class ConfigurationExtensions
     configBuilder.AddEnvironmentVariables();
 
     // 4. Azure Key Vault (for live environments)
-    if (environment != "Development")
+    if (!builder.Environment.IsDevelopment())
     {
       AddKeyVaultConfiguration(configBuilder);
     }
@@ -75,7 +76,7 @@ public static class ConfigurationExtensions
   public static void ValidateConfiguration(this IServiceProvider serviceProvider)
   {
     // Validate AppSettings configuration by resolving IOptions<AppSettings>
-    serviceProvider.GetRequiredService<IOptions<AppSettings>>();
+    var _options = serviceProvider.GetRequiredService<IOptions<AppSettings>>();
   }
 }
 

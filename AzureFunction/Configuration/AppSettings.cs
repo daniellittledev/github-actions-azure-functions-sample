@@ -7,11 +7,9 @@ public class AppSettings
 {
   public const string SectionName = "AppSettings";
 
-  [Required]
-  public string Environment { get; set; } = string.Empty;
-
   public string? ApplicationInsightsConnectionString { get; set; }
 
+  [Required]
   public ExternalApiSettings ExternalApi { get; set; } = new();
 }
 
@@ -31,11 +29,6 @@ public class AppSettingsValidator : IValidateOptions<AppSettings>
   public ValidateOptionsResult Validate(string? name, AppSettings options)
   {
     var errors = new List<string>();
-
-    if (string.IsNullOrEmpty(options.Environment))
-    {
-      errors.Add("Environment is required");
-    }
 
     if (string.IsNullOrEmpty(options.ExternalApi.BaseUrl))
     {

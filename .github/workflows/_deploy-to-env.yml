@@ -187,12 +187,14 @@ jobs:
               "FUNCTIONS_EXTENSION_VERSION=~4" `
               "FUNCTIONS_WORKER_RUNTIME=dotnet-isolated" `
               "WEBSITE_RUN_FROM_PACKAGE=1" `
-              "AzureWebJobsStorage=$storageConnection" `
-              "AZURE_SUBSCRIPTION_ID=${{ secrets.AZURE_SUBSCRIPTION_ID }}" `
               "DOTNET_ENVIRONMENT=$dotnetEnv" `
-              "SAMPLE_SETTING=$environment-sample" `
               "DEPLOYMENT_VERSION=${{ inputs.version }}" `
-              "DEPLOYED_AT=$deployedAt"
+              "DEPLOYED_AT=$deployedAt" `
+              "AzureWebJobsStorage=$storageConnection" `
+              "AppSettings__ExternalApi__BaseUrl=${{ vars.AppSettings__ExternalApi__BaseUrl }}" `
+              "AppSettings__ExternalApi__ApiKey=${{ vars.AppSettings__ExternalApi__ApiKey }}" `
+              "AppSettings__ExternalApi__TimeoutSeconds=${{ vars.AppSettings__ExternalApi__TimeoutSeconds }}" `
+              "KeyVault__Url=${{ vars.KeyVault__Url }}"
 
       - name: Wait for staging slot warmup
         shell: pwsh
