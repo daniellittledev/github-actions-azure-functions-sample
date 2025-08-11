@@ -46,6 +46,10 @@ jobs:
       version: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.tag }}
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
       AZURE_FUNCTIONAPP_NAME: ${{ vars.AZURE_FUNCTIONAPP_NAME }}
+      AppSettings__ExternalApi__BaseUrl: ${{ vars.AppSettings__ExternalApi__BaseUrl }}
+      AppSettings__ExternalApi__ApiKey: ${{ vars.AppSettings__ExternalApi__ApiKey }}
+      AppSettings__ExternalApi__TimeoutSeconds: ${{ vars.AppSettings__ExternalApi__TimeoutSeconds }}
+      KeyVault__Url: ${{ vars.KeyVault__Url }}
     secrets:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
