@@ -19,6 +19,22 @@ on:
         required: true
         type: string
         description: "Azure function app name"
+      AppSettings__ExternalApi__BaseUrl:
+        required: true
+        type: string
+        description: "External API base URL"
+      AppSettings__ExternalApi__ApiKey:
+        required: true
+        type: string
+        description: "External API key"
+      AppSettings__ExternalApi__TimeoutSeconds:
+        required: true
+        type: string
+        description: "External API timeout in seconds"
+      KeyVault__Url:
+        required: true
+        type: string
+        description: "Azure Key Vault URL"
     secrets:
       AZURE_CLIENT_ID:
         required: true
