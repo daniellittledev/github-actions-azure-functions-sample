@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.Hosting;
+using Serilog;
 
 namespace AzureFunction.Configuration;
 
@@ -48,14 +49,21 @@ public static class ConfigurationExtensions
     {
       try
       {
+        Log.Information("Connecting to Azure Key Vault: {KeyVaultUrl}", keyVaultUrl);
         var credential = new DefaultAzureCredential();
         var secretClient = new SecretClient(new Uri(keyVaultUrl), credential);
         config.AddAzureKeyVault(secretClient, new KeyVaultSecretManager());
-      } catch (Exception ex)
+        Log.Information("Successfully connected to Azure Key Vault");
+      } 
+      catch (Exception ex)
       {
         // Log the error but don't fail the application startup
-        Console.WriteLine($"Warning: Could not connect to Key Vault: {ex.Message}");
+        Log.Warning(ex, "Could not connect to Key Vault: {KeyVaultUrl}", keyVaultUrl);
       }
+    }
+    else
+    {
+      Log.Information("No Key Vault URL configured, skipping Key Vault configuration");
     }
   }
 
@@ -72,11 +80,25 @@ public static class ConfigurationExtensions
     return services;
   }
 
-  //IServiceScope
   public static void ValidateConfiguration(this IServiceProvider serviceProvider)
   {
-    // Validate AppSettings configuration by resolving IOptions<AppSettings>
-    var _options = serviceProvider.GetRequiredService<IOptions<AppSettings>>();
+    try
+    {
+      // Validate AppSettings configuration by resolving IOptions<AppSettings>
+      var options = serviceProvider.GetRequiredService<IOptions<AppSettings>>();
+      var appSettings = options.Value; // This will trigger validation
+      Log.Information("AppSettings validation successful");
+    }
+    catch (OptionsValidationException ex)
+    {
+      Log.Error(ex, "Configuration validation failed: {ValidationFailures}", string.Join(", ", ex.Failures));
+      throw;
+    }
+    catch (Exception ex)
+    {
+      Log.Error(ex, "Unexpected error during configuration validation");
+      throw;
+    }
   }
 }
 

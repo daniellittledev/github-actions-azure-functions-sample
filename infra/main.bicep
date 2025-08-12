@@ -13,6 +13,26 @@ resource storage 'Microsoft.Storage/storageAccounts@2024-01-01' = {
   properties: {}
 }
 
+resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
+  name: '${functionAppName}-kv'
+  location: location
+  properties: {
+    sku: {
+      family: 'A'
+      name: 'standard'
+    }
+    tenantId: tenant().tenantId
+    enabledForDeployment: false
+    enabledForDiskEncryption: false
+    enabledForTemplateDeployment: true
+    enableSoftDelete: true
+    softDeleteRetentionInDays: 7
+    enableRbacAuthorization: true
+    publicNetworkAccess: 'Enabled'
+    accessPolicies: []
+  }
+}
+
 resource hostingPlan 'Microsoft.Web/serverfarms@2024-04-01' = {
   name: '${functionAppName}-plan'
   location: location
@@ -56,10 +76,28 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
           name: 'AZURE_SUBSCRIPTION_ID'
           value: subscription().subscriptionId
         }
+        {
+          name: 'AZURE_KEY_VAULT_URL'
+          value: keyVault.properties.vaultUri
+        }
         // Environment-specific settings will be managed via Azure CLI in the deployment pipeline
       ]
     }
     httpsOnly: true
+  }
+}
+
+// Grant the Function App access to Key Vault secrets
+resource keyVaultSecretsUserRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVault.id, functionApp.id, 'Key Vault Secrets User')
+  scope: keyVault
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '4633458b-17de-408a-b874-0445c86b69e6'
+    ) // Key Vault Secrets User
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
   }
 }
 
@@ -83,6 +121,10 @@ resource stagingSlot 'Microsoft.Web/sites/slots@2024-04-01' = {
           name: 'AZURE_SUBSCRIPTION_ID'
           value: subscription().subscriptionId
         }
+        {
+          name: 'AZURE_KEY_VAULT_URL'
+          value: keyVault.properties.vaultUri
+        }
       ]
     }
   }
@@ -93,4 +135,6 @@ output functionAppName string = functionApp.name
 output resourceGroupName string = resourceGroup().name
 output storageAccountName string = storage.name
 output hostingPlanName string = hostingPlan.name
+output keyVaultName string = keyVault.name
+output keyVaultUrl string = keyVault.properties.vaultUri
 output webJobsStorageConnection string = webJobsStorageConnection

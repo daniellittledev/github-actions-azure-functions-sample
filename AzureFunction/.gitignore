@@ -4,6 +4,10 @@
 # Azure Functions localsettings file
 local.settings.json
 
+# Serilog log files
+logs/
+*.log
+
 # User-specific files
 *.suo
 *.user
@@ -65,7 +69,6 @@ artifacts/
 *.tlh
 *.tmp
 *.tmp_proj
-*.log
 *.vspscc
 *.vssscc
 .builds
