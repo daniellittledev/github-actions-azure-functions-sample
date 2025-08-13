@@ -201,6 +201,8 @@ jobs:
               "WEBSITE_RUN_FROM_PACKAGE=1" `
               "DOTNET_ENVIRONMENT=$dotnetEnv" `
               "AzureWebJobsDisableHomepage=true" `
+              "WEBSITE_SWAP_WARMUP_PING_PATH=/health" `
+              "WEBSITE_SWAP_WARMUP_PING_STATUSES=200" `
               "DEPLOYMENT_VERSION=${{ inputs.version }}" `
               "DEPLOYED_AT=$deployedAt" `
               "AzureWebJobsStorage=$storageConnection" `
@@ -230,7 +232,7 @@ jobs:
           # Try to hit the health endpoint (assuming you have one)
           for ($i = 1; $i -le 10; $i++) {
             try {
-              $response = Invoke-WebRequest -Uri "$stagingUrl/api/health" -TimeoutSec 10 -ErrorAction Stop
+              $response = Invoke-WebRequest -Uri "$stagingUrl/health" -TimeoutSec 10 -ErrorAction Stop
               if ($response.StatusCode -eq 200) {
                 Write-Host "Staging slot is healthy"
                 break
@@ -250,7 +252,7 @@ jobs:
 
           # Example smoke test
           try {
-            $response = Invoke-WebRequest -Uri "$stagingUrl/api/health" -TimeoutSec 30 -ErrorAction Stop
+            $response = Invoke-WebRequest -Uri "$stagingUrl/health" -TimeoutSec 30 -ErrorAction Stop
             if ($response.Content -match "Healthy") {
               Write-Host "Smoke test passed: Health endpoint is working"
             } else {
@@ -285,7 +287,7 @@ jobs:
           # Verify production is working
           for ($i = 1; $i -le 5; $i++) {
             try {
-              $response = Invoke-WebRequest -Uri "$prodUrl/api/health" -TimeoutSec 10 -ErrorAction Stop
+              $response = Invoke-WebRequest -Uri "$prodUrl/health" -TimeoutSec 10 -ErrorAction Stop
               if ($response.StatusCode -eq 200) {
                 Write-Host "✅ Production verification successful"
                 break

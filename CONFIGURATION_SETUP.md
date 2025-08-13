@@ -104,10 +104,10 @@ The application includes automatic configuration validation on startup. If requi
 
 ## Testing Configuration
 
-Use the `/api/config` endpoint to verify your configuration is working correctly:
+Use the `/config` endpoint to verify your configuration is working correctly:
 
 ```bash
-curl http://localhost:7071/api/config
+curl http://localhost:7071/config
 ```
 
 This will return information about your current configuration (without exposing sensitive values).
