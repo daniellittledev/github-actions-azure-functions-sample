@@ -98,6 +98,11 @@ jobs:
             Write-Host "Error: $($_.Exception.Message)"
           }
 
+      - name: Install Azure CLI
+        uses: azure/setup-cli@v1
+        with:
+          version: "latest"
+
       - name: Azure Login using OIDC
         uses: azure/login@v2
         with:
