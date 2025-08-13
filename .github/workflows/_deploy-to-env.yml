@@ -101,7 +101,7 @@ jobs:
       - name: Upgrade Azure CLI
         shell: pwsh
         run: |
-          az upgrade
+          az upgrade --yes
 
       - name: Azure Login using OIDC
         uses: azure/login@v2
