@@ -1,15 +1,12 @@
-using System;
 using AzureFunction.Configuration;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Hosting.Internal;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace AzureFunction;
+namespace AzureFunction.Routes;
 
 public class ConfigurationDemoFunction
 {
@@ -29,7 +26,7 @@ public class ConfigurationDemoFunction
 
     [Function("ConfigurationDemo")]
     public IActionResult Run(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "config")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "config")] HttpRequestData req)
     {
         logger.LogInformation("Configuration demo function processed a request.");
         logger.LogInformation("Environment: {Environment}", environment.EnvironmentName);

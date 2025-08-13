@@ -3,7 +3,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-namespace AzureFunction
+namespace AzureFunction.Routes
 {
     public class HealthCheck
     {

@@ -175,15 +175,6 @@ jobs:
             Write-Host "Staging slot already exists"
           }
 
-      - name: Deploy to staging slot
-        shell: pwsh
-        run: |
-          az functionapp deployment source config-zip `
-            --name ${{ vars.AZURE_FUNCTIONAPP_NAME }} `
-            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} `
-            --slot staging `
-            --src ./artifacts/function-app.zip
-
       - name: Configure app settings for staging slot
         shell: pwsh
         run: |
@@ -209,6 +200,7 @@ jobs:
               "FUNCTIONS_WORKER_RUNTIME=dotnet-isolated" `
               "WEBSITE_RUN_FROM_PACKAGE=1" `
               "DOTNET_ENVIRONMENT=$dotnetEnv" `
+              "AzureWebJobsDisableHomepage=true" `
               "DEPLOYMENT_VERSION=${{ inputs.version }}" `
               "DEPLOYED_AT=$deployedAt" `
               "AzureWebJobsStorage=$storageConnection" `
@@ -216,6 +208,15 @@ jobs:
               "AppSettings__ExternalApi__ApiKey=${{ vars.AppSettings__ExternalApi__ApiKey }}" `
               "AppSettings__ExternalApi__TimeoutSeconds=${{ vars.AppSettings__ExternalApi__TimeoutSeconds }}" `
               "KeyVault__Url=${{ vars.KeyVault__Url }}"
+
+      - name: Deploy to staging slot
+        shell: pwsh
+        run: |
+          az functionapp deployment source config-zip `
+            --name ${{ vars.AZURE_FUNCTIONAPP_NAME }} `
+            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} `
+            --slot staging `
+            --src ./artifacts/function-app.zip
 
       - name: Wait for staging slot warmup
         shell: pwsh
